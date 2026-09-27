@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b6b3a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Recycle Calc">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>Recycling Center Calculator</title>
+  <style>
+    :root{
+      --bg:#f3f6f4;--card:#fff;--text:#18211c;--muted:#647168;--accent:#0b6b3a;
+      --accent2:#e8f4ed;--border:#dbe4de;--good:#0b7a43;--warn:#9a6500;--bad:#a33131;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:calc(env(safe-area-inset-top) + 10px) 16px 10px}
+    header h1{font-size:20px;margin:0}
+    header p{font-size:12px;color:var(--muted);margin:3px 0 0}
+    main{padding:14px 14px calc(28px + env(safe-area-inset-bottom));max-width:900px;margin:auto}
+    .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+    .tab{border:1px solid var(--border);background:#fff;border-radius:12px;padding:11px 8px;font-weight:700;font-size:14px}
+    .tab.active{background:var(--accent);color:white;border-color:var(--accent)}
+    .panel{display:none}.panel.active{display:block}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px}
+    h2{font-size:18px;margin:0 0 4px} h3{font-size:15px;margin:0 0 8px}
+    .sub{font-size:13px;color:var(--muted);margin:0 0 12px}
+    label{display:block;font-size:13px;font-weight:700;margin:10px 0 5px}
+    input,select,button{font:inherit}
+    input,select{width:100%;border:1px solid var(--border);border-radius:12px;background:#fff;padding:12px;font-size:16px}
+    button.primary{width:100%;border:0;border-radius:12px;background:var(--accent);color:white;padding:13px;font-weight:800;font-size:16px;margin-top:12px}
+    button.secondary{border:1px solid var(--border);border-radius:10px;background:#fff;padding:9px 11px;font-weight:700}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+    .stat{background:var(--accent2);border-radius:12px;padding:11px}
+    .stat span{display:block;font-size:12px;color:var(--muted)}
+    .stat strong{display:block;font-size:19px;margin-top:3px}
+    .result-row{display:grid;grid-template-columns:1.35fr .7fr .75fr .85fr;gap:6px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+    .result-row.head{font-size:11px;color:var(--muted);font-weight:800}
+    .best{font-weight:800;color:var(--good)}
+    .badge{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--accent2);font-size:11px;font-weight:800}
+    .note{font-size:12px;color:var(--muted);margin-top:10px}
+    .offer-good{color:var(--good);font-weight:800}.offer-warn{color:var(--warn);font-weight:800}.offer-bad{color:var(--bad);font-weight:800}
+    details{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+    summary{font-weight:800;cursor:pointer}
+    .small{font-size:12px;color:var(--muted)}
+    .list{display:grid;gap:8px}
+    .item{border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff}
+    @media(max-width:520px){
+      .grid2{grid-template-columns:1fr}
+      .result-row{grid-template-columns:1.2fr .65fr .65fr .8fr;font-size:12px}
+      .tabs{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>♻️ Recycling Center Calculator</h1>
+  <p>Productie, opbrengst en onderhandeling — offline bruikbaar</p>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="production">Productie</button>
+    <button class="tab" data-tab="trade">Handel</button>
+    <button class="tab" data-tab="data">Gegevens</button>
+  </div>
+
+  <section id="production" class="panel active">
+    <div class="card">
+      <h2>Wat kan ik maken?</h2>
+      <p class="sub">Kies wat er in je machine/opslag zit en vul de hoeveelheid in.</p>
+
+      <label for="prodCategory">Categorie</label>
+      <select id="prodCategory"></select>
+
+      <label for="prodStage">Wat heb je beschikbaar?</label>
+      <select id="prodStage"></select>
+
+      <label for="prodKg">Hoeveelheid (kg)</label>
+      <input id="prodKg" type="number" min="0" step="0.1" value="10">
+
+      <button class="primary" id="calcProduction">Bereken mogelijkheden</button>
+    </div>
+
+    <div class="card">
+      <h3>Mogelijke eindproducten</h3>
+      <div id="prodResults"></div>
+      <p class="note">De calculator rekent door de volledige keten. Hij gebruikt de marktprijzen en productieverhoudingen die we al hebben verzameld.</p>
+    </div>
+  </section>
+
+  <section id="trade" class="panel">
+    <div class="card">
+      <h2>Goede handelsprijs</h2>
+      <p class="sub">Bereken de normale waarde en een richtprijs om te onderhandelen.</p>
+
+      <label for="tradeProduct">Product</label>
+      <select id="tradeProduct"></select>
+
+      <div class="grid2">
+        <div>
+          <label for="tradeQty">Aantal</label>
+          <input id="tradeQty" type="number" min="1" step="1" value="10">
+        </div>
+        <div>
+          <label for="tradeOffer">Huidig bod per stuk (optioneel)</label>
+          <input id="tradeOffer" type="number" min="0" step="1" placeholder="bv. 120">
+        </div>
+      </div>
+
+      <label for="tradeMargin">Richtmarge boven marktprijs</label>
+      <select id="tradeMargin">
+        <option value="0.15">Voorzichtig +15%</option>
+        <option value="0.25" selected>Goed doel +25%</option>
+        <option value="0.35">Agressief +35%</option>
+        <option value="0.50">Zeer agressief +50%</option>
+      </select>
+
+      <button class="primary" id="calcTrade">Bereken handelsprijs</button>
+    </div>
+
+    <div class="card" id="tradeResults"></div>
+  </section>
+
+  <section id="data" class="panel">
+    <div class="card">
+      <h2>Bekende gegevens</h2>
+      <p class="sub">Deze versie bevat de huidige waarden en recepten. Organisch en hybride zijn voorlopig alleen als verkoopprijzen opgenomen waar de recepten nog ontbreken.</p>
+      <div id="dataList" class="list"></div>
+      <details>
+        <summary>Gegevens aanpassen</summary>
+        <p class="small">Je kunt marktprijzen lokaal aanpassen. De wijzigingen blijven op je iPhone bewaard.</p>
+        <label for="editProduct">Product</label>
+        <select id="editProduct"></select>
+        <label for="editPrice">Nieuwe marktprijs</label>
+        <input id="editPrice" type="number" min="0" step="1">
+        <button class="secondary" id="savePrice" type="button">Prijs opslaan</button>
+      </details>
+    </div>
+  </section>
+</main>
+
+<script>
+const defaultData = {
+  prices: {
+    "Plastic Delen":3,"Geperst Plastic":6,"Plastic Korrels":21,"Plastic Flessen":67,"Plastic Doos":75,"Plastic Pijp":91,"Plastic Vaas":107,
+    "Papierdelen":3,"Geperst Papier":6,"Papierrol":20,"Kartons":64,"Enveloppen":72,"Kranten":87,
+    "Houtdelen":3,"Zaagsel":6,"Vezelplaat":20,"Houten Kist":63,"Houtbriketten":70,
+    "Glasdelen":3,"Glasstof":7,"Gesmolten Glas":24,"Glazen Blokken":77,"Glazen Flessen":87,"Glazen Potten":105,
+    "Metaaldelen":3,"Geperst Metaal":7,"Metaal Ingot":24,"Kabels":79,"Metalen Blikje":88,"Metalen Pijp":98,"Metalen Rol":107,
+    "Organisch Afval":3,"Compost":35,"Vloeibare Meststof - Klein":149,"Vloeibare Meststof - Medium":296,"Vloeibare Meststof - Groot":590,
+    "Papieren bekers":192,"Mappen":194,"Puzzels":195,"Juwelendozen":209,"Bijl":213,"Lijsten":216,"Troffel":220,"Potten":223,"Halter":224,"Hamer":227,"Waterflessen":229,"Pan":234
+  },
+  chains: {
+    "Metaal": {
+      stages:["Metaaldelen","Geperst Metaal","Metaal Ingot"],
+      steps:[
+        {from:"Metaaldelen",to:"Geperst Metaal",input:1.0},
+        {from:"Geperst Metaal",to:"Metaal Ingot",input:2.0}
+      ],
+      finals:[
+        {name:"Kabels",from:"Metaal Ingot",input:2.0},
+        {name:"Metalen Blikje",from:"Metaal Ingot",input:2.3},
+        {name:"Metalen Pijp",from:"Metaal Ingot",input:2.5},
+        {name:"Metalen Rol",from:"Metaal Ingot",input:2.8}
+      ]
+    },
+    "Hout": {
+      stages:["Houtdelen","Zaagsel","Vezelplaat"],
+      steps:[
+        {from:"Houtdelen",to:"Zaagsel",input:1.0},
+        {from:"Zaagsel",to:"Vezelplaat",input:2.0}
+      ],
+      finals:[
+        {name:"Houten Kist",from:"Vezelplaat",input:2.0},
+        {name:"Houtbriketten",from:"Vezelplaat",input:2.3}
+      ]
+    },
+    "Papier": {
+      stages:["Papierdelen","Geperst Papier","Papierrol"],
+      steps:[
+        {from:"Papierdelen",to:"Geperst Papier",input:1.0},
+        {from:"Geperst Papier",to:"Papierrol",input:2.0}
+      ],
+      finals:[
+        {name:"Kartons",from:"Papierrol",input:2.0},
+        {name:"Enveloppen",from:"Papierrol",input:2.3},
+        {name:"Kranten",from:"Papierrol",input:2.8}
+      ]
+    },
+    "Plastic": {
+      stages:["Plastic Delen","Geperst Plastic","Plastic Korrels"],
+      steps:[
+        {from:"Plastic Delen",to:"Geperst Plastic",input:1.0},
+        {from:"Geperst Plastic",to:"Plastic Korrels",input:2.0}
+      ],
+      finals:[
+        {name:"Plastic Flessen",from:"Plastic Korrels",input:2.0},
+        {name:"Plastic Doos",from:"Plastic Korrels",input:2.3},
+        {name:"Plastic Pijp",from:"Plastic Korrels",input:2.8},
+        {name:"Plastic Vaas",from:"Plastic Korrels",input:3.3}
+      ]
+    },
+    "Glas": {
+      stages:["Glasdelen","Glasstof","Gesmolten Glas"],
+      steps:[
+        {from:"Glasdelen",to:"Glasstof",input:1.0},
+        {from:"Glasstof",to:"Gesmolten Glas",input:2.0}
+      ],
+      finals:[
+        {name:"Glazen Blokken",from:"Gesmolten Glas",input:2.0},
+        {name:"Glazen Flessen",from:"Gesmolten Glas",input:2.3},
+        {name:"Glazen Potten",from:"Gesmolten Glas",input:2.8}
+      ]
+    }
+  }
+};
+
+let appData = JSON.parse(localStorage.getItem("rcsData") || "null") || defaultData;
+const $ = id => document.getElementById(id);
+const money = n => "$" + Math.round(n).toLocaleString("nl-BE");
+const kg = n => Number(n).toLocaleString("nl-BE",{maximumFractionDigits:2}) + " kg";
+
+function saveData(){ localStorage.setItem("rcsData", JSON.stringify(appData)); }
+
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active"); $(btn.dataset.tab).classList.add("active");
+  });
+});
+
+function initProductionSelectors(){
+  $("prodCategory").innerHTML = Object.keys(appData.chains).map(x=>`<option>${x}</option>`).join("");
+  updateStages();
+}
+function updateStages(){
+  const c=appData.chains[$("prodCategory").value];
+  $("prodStage").innerHTML = c.stages.map(x=>`<option>${x}</option>`).join("");
+}
+$("prodCategory").addEventListener("change",updateStages);
+
+function equivalentFinalInput(category, startStage, final){
+  const c=appData.chains[category];
+  let factor=1;
+  let current=startStage;
+  while(current !== final.from){
+    const step=c.steps.find(s=>s.from===current);
+    if(!step) return null;
+    factor *= step.input;
+    current=step.to;
+  }
+  return factor * final.input;
+}
+
+function toGrams(valueKg){
+  return Math.floor((Number(valueKg) || 0) * 1000 + 0.000001);
+}
+
+function calcProduction(){
+  const category=$("prodCategory").value;
+  const start=$("prodStage").value;
+  const amount=Math.max(0,parseFloat($("prodKg").value)||0);
+  const amountGrams=toGrams(amount);
+  const c=appData.chains[category];
+
+  const rows=c.finals.map(f=>{
+    const need=equivalentFinalInput(category,start,f);
+    const needGrams=toGrams(need);
+    const qty=needGrams > 0 ? Math.floor(amountGrams/needGrams) : 0;
+    const usedGrams=qty*needGrams;
+    const leftGrams=Math.max(0,amountGrams-usedGrams);
+    const used=usedGrams/1000;
+    const left=leftGrams/1000;
+    const total=qty*(appData.prices[f.name]||0);
+    return {name:f.name,need,qty,left,total};
+  }).sort((a,b)=>b.total-a.total);
+
+  $("prodResults").innerHTML =
+    `<div class="result-row head"><div>Product</div><div>Nodig/st.</div><div>Aantal</div><div>Waarde</div></div>`+
+    rows.map((r,i)=>`<div class="result-row ${i===0?'best':''}">
+      <div>${r.name}${i===0?' <span class="badge">hoogste totaal</span>':''}<div class="small">over: ${kg(r.left)}</div></div>
+      <div>${kg(r.need)}</div><div>${r.qty}</div><div>${money(r.total)}</div>
+    </div>`).join("");
+}
+
+function initTrade(){
+  const names=Object.keys(appData.prices).sort((a,b)=>a.localeCompare(b,"nl"));
+  $("tradeProduct").innerHTML=names.map(n=>`<option>${n}</option>`).join("");
+  $("editProduct").innerHTML=names.map(n=>`<option>${n}</option>`).join("");
+  syncEditPrice();
+}
+function calcTrade(){
+  const name=$("tradeProduct").value;
+  const base=appData.prices[name]||0;
+  const qty=Math.max(1,parseInt($("tradeQty").value)||1);
+  const margin=parseFloat($("tradeMargin").value)||0;
+  const target=Math.round(base*(1+margin));
+  const offer=parseFloat($("tradeOffer").value);
+  let verdict="";
+  if(Number.isFinite(offer)){
+    const pct=((offer/base)-1)*100;
+    let cls="offer-warn", txt="rond de marktprijs";
+    if(pct>=25){cls="offer-good";txt="sterke aanbieding"}
+    else if(pct>=10){cls="offer-good";txt="goede aanbieding"}
+    else if(pct<0){cls="offer-bad";txt="onder marktprijs"}
+    verdict=`<p>Huidig bod: <strong>${money(offer)}</strong> per stuk (${pct>=0?"+":""}${pct.toFixed(1)}%). <span class="${cls}">${txt}</span>.</p>`;
+  }
+  $("tradeResults").innerHTML=`
+    <h3>${name}</h3>
+    <div class="stats">
+      <div class="stat"><span>Marktprijs/stuk</span><strong>${money(base)}</strong></div>
+      <div class="stat"><span>Marktwaarde totaal</span><strong>${money(base*qty)}</strong></div>
+      <div class="stat"><span>Richtbod/stuk</span><strong>${money(target)}</strong></div>
+      <div class="stat"><span>Richtbod totaal</span><strong>${money(target*qty)}</strong></div>
+    </div>
+    ${verdict}
+    <p class="note">De richtmarges zijn voorlopig. Zodra we echte onderhandelingen testen, kunnen we de acceptatiegrenzen per product verfijnen.</p>`;
+}
+
+function renderData(){
+  $("dataList").innerHTML=Object.entries(appData.chains).map(([cat,c])=>{
+    const finals=c.finals.map(f=>`${f.name}: ${f.input} kg ${f.from} → ${money(appData.prices[f.name])}`).join("<br>");
+    return `<div class="item"><strong>${cat}</strong><div class="small">${finals}</div></div>`;
+  }).join("");
+}
+function syncEditPrice(){ $("editPrice").value=appData.prices[$("editProduct").value]||0; }
+$("editProduct").addEventListener("change",syncEditPrice);
+$("savePrice").addEventListener("click",()=>{
+  const n=Math.max(0,parseFloat($("editPrice").value)||0);
+  appData.prices[$("editProduct").value]=n; saveData(); initTrade(); renderData(); alert("Prijs opgeslagen.");
+});
+
+$("calcProduction").addEventListener("click",calcProduction);
+$("calcTrade").addEventListener("click",calcTrade);
+
+initProductionSelectors();
+initTrade();
+renderData();
+calcProduction();
+calcTrade();
+
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
+</script>
+</body>
+</html>
