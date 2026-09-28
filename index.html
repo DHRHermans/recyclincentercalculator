@@ -21,7 +21,7 @@
     header h1{font-size:20px;margin:0}
     header p{font-size:12px;color:var(--muted);margin:3px 0 0}
     main{padding:14px 14px calc(28px + env(safe-area-inset-bottom));max-width:900px;margin:auto}
-    .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+    .tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
     .tab{border:1px solid var(--border);background:#fff;border-radius:12px;padding:11px 8px;font-weight:700;font-size:14px}
     .tab.active{background:var(--accent);color:white;border-color:var(--accent)}
     .panel{display:none}.panel.active{display:block}
@@ -67,6 +67,7 @@
     <button class="tab active" data-tab="production">Productie</button>
     <button class="tab" data-tab="trade">Handel</button>
     <button class="tab" data-tab="contracts">Contracten</button>
+    <button class="tab" data-tab="stock">Mijn stock</button>
     <button class="tab" data-tab="data">Gegevens</button>
   </div>
 
@@ -160,22 +161,39 @@
     </div>
 
     <div class="card" id="contractResults"></div>
+
+    <div class="card">
+      <h2>Contract haalbaarheid</h2><p class="sub">Voeg alle producten en aantallen uit het contract toe. De app vergelijkt dit automatisch met Mijn stock.</p><h3>Producten in het contract</h3>
+      <div id="feasibilityLines"></div>
+      <button class="secondary" id="addFeasibilityLine" type="button">+ Product toevoegen</button>
+      <button class="primary" id="calcFeasibility" type="button">Controleer of ik dit kan maken</button>
+    </div>
+    <div class="card" id="feasibilityResults"><p class="sub">Nog geen haalbaarheidsberekening uitgevoerd.</p></div>
   </section>
 
-  <section id="contracts" class="panel">
+  <section id="stock" class="panel">
     <div class="card">
-      <h2>Contractplanner</h2>
-      <p class="sub">Vul je volledige stock in. De calculator gebruikt eerst eindproducten, daarna tussenproducten en berekent vervolgens welke ruwe grondstoffen nog nodig zijn.</p>
-      <h3>Mijn stock</h3>
-      <div id="stockEditor"></div>
+      <h2>Mijn stock</h2>
+      <p class="sub">Vul hier in wat je momenteel bezit. Deze gegevens worden lokaal op je iPhone bewaard en automatisch gebruikt bij de contractcontrole.</p>
+      <div class="grid2">
+        <div>
+          <label for="stockFilter">Toon</label>
+          <select id="stockFilter">
+            <option value="all">Alles</option>
+            <option value="raw">Ruwe grondstoffen</option>
+            <option value="intermediate">Tussenproducten</option>
+            <option value="final">Eindproducten</option>
+          </select>
+        </div>
+        <div>
+          <label for="stockSearch">Zoeken</label>
+          <input id="stockSearch" type="text" placeholder="bv. plastic">
+        </div>
+      </div>
+      <div id="stockEditor" style="margin-top:12px"></div>
+      <button class="primary" id="saveStockButton" type="button">Stock opslaan</button>
+      <p id="stockSaved" class="note"></p>
     </div>
-    <div class="card">
-      <h3>Contract invoeren</h3>
-      <div id="contractLines"></div>
-      <button class="secondary" id="addContractLine" type="button">+ Product toevoegen</button>
-      <button class="primary" id="calcContract" type="button">Controleer contract</button>
-    </div>
-    <div class="card" id="contractResults"><p class="sub">Vul je stock en contract in.</p></div>
   </section>
 
   <section id="data" class="panel">
@@ -389,53 +407,105 @@ function calcTrade(){
 
 
 function allStockItems(){
-  const s=new Set();
-  Object.values(appData.chains).forEach(c=>{c.stages.forEach(x=>s.add(x));c.finals.forEach(f=>s.add(f.name));});
-  return [...s].sort((a,b)=>a.localeCompare(b,"nl"));
+  const set=new Set(Object.keys(appData.prices));
+  Object.values(appData.chains).forEach(c=>{
+    c.stages.forEach(x=>set.add(x));
+    c.finals.forEach(f=>set.add(f.name));
+  });
+  return [...set].sort((a,b)=>a.localeCompare(b,"nl"));
 }
-function getStock(){return JSON.parse(localStorage.getItem("rcsStock")||"{}");}
-function saveStock(s){localStorage.setItem("rcsStock",JSON.stringify(s));}
-function renderStock(){
-  const s=getStock();
-  $("stockEditor").innerHTML=allStockItems().map(n=>`<div style="display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center;margin:7px 0"><span>${n}</span><input class="stockField" data-name="${n}" type="number" min="0" step="0.1" value="${s[n]||0}"></div>`).join("");
-  document.querySelectorAll(".stockField").forEach(i=>i.oninput=()=>{const d=getStock();d[i.dataset.name]=Math.max(0,Number(i.value)||0);saveStock(d);});
+function getFullStock(){return JSON.parse(localStorage.getItem("rcsFullStock")||"{}");}
+function saveFullStock(x){localStorage.setItem("rcsFullStock",JSON.stringify(x));}
+function stockType(name){
+  for(const c of Object.values(appData.chains)){
+    if(c.stages[0]===name)return "raw";
+    if(c.stages.slice(1).includes(name))return "intermediate";
+    if(c.finals.some(f=>f.name===name))return "final";
+  }
+  return "final";
 }
-function contractProducts(){
-  const a=[];Object.entries(appData.chains).forEach(([cat,c])=>c.finals.forEach(f=>a.push({cat,name:f.name})));
+function renderFullStock(){
+  const stock=getFullStock();
+  const filter=$("stockFilter")?.value||"all";
+  const search=($("stockSearch")?.value||"").trim().toLowerCase();
+  const items=allStockItems().filter(n=>(filter==="all"||stockType(n)===filter)&&(!search||n.toLowerCase().includes(search)));
+  $("stockEditor").innerHTML=items.map(n=>`<div style="display:grid;grid-template-columns:1fr 105px;gap:8px;align-items:center;margin:7px 0">
+    <span>${n}<div class="small">${stockType(n)==="raw"?"ruwe grondstof":stockType(n)==="intermediate"?"tussenproduct":"eindproduct"}</div></span>
+    <input class="fullStockField" data-name="${n}" type="number" min="0" step="0.1" value="${stock[n]||0}">
+  </div>`).join("") || '<p class="small">Geen producten gevonden.</p>';
+  document.querySelectorAll(".fullStockField").forEach(i=>i.oninput=()=>{
+    const s=getFullStock();s[i.dataset.name]=Math.max(0,Number(i.value)||0);saveFullStock(s);
+  });
+}
+function knownContractProducts(){
+  const a=[];
+  Object.entries(appData.chains).forEach(([cat,c])=>c.finals.forEach(f=>a.push({cat,name:f.name,known:true})));
+  // Hybrid products remain visible, but recipes are not invented.
+  Object.keys(appData.prices).forEach(name=>{
+    if(!a.some(x=>x.name===name) && ["Papieren bekers","Mappen","Puzzels","Juwelendozen","Bijl","Lijsten","Troffel","Potten","Halter","Hamer","Waterflessen","Pan"].includes(name))
+      a.push({cat:"Hybride — recept nog onbekend",name,known:false});
+  });
   return a.sort((a,b)=>a.name.localeCompare(b.name,"nl"));
 }
-function addContractLine(){
-  const d=document.createElement("div");d.className="contractLine";
-  d.style.cssText="display:grid;grid-template-columns:1fr 85px 42px;gap:7px;align-items:end;margin:8px 0";
-  d.innerHTML=`<div><label>Product</label><select class="cp">${contractProducts().map(x=>`<option value="${x.name}">${x.name} — ${x.cat}</option>`).join("")}</select></div><div><label>Aantal</label><input class="cq" type="number" min="0" step="1" value="1"></div><button class="secondary cr" type="button">×</button>`;
-  $("contractLines").appendChild(d);d.querySelector(".cr").onclick=()=>d.remove();
+function addFeasibilityLine(){
+  const row=document.createElement("div");row.className="feasibilityLine";
+  row.style.cssText="display:grid;grid-template-columns:1fr 82px 42px;gap:7px;align-items:end;margin:8px 0";
+  row.innerHTML=`<div><label>Product</label><select class="fp">${knownContractProducts().map(x=>`<option value="${x.name}">${x.name} — ${x.cat}</option>`).join("")}</select></div>
+  <div><label>Aantal</label><input class="fq" type="number" min="0" step="1" value="1"></div>
+  <button class="secondary fr" type="button">×</button>`;
+  $("feasibilityLines").appendChild(row);row.querySelector(".fr").onclick=()=>row.remove();
 }
-function productRecipe(name){
+function findFinalRecipe(name){
   for(const [cat,c] of Object.entries(appData.chains)){const f=c.finals.find(x=>x.name===name);if(f)return{cat,c,f};}
   return null;
 }
-function take(stock,name,amount){const have=Number(stock[name])||0,use=Math.min(have,amount);stock[name]=have-use;return amount-use;}
-function needMaterial(stock,c,material,amount,raw){
-  amount=take(stock,material,amount);if(amount<=1e-9)return;
-  const step=c.steps.find(x=>x.to===material);
+function consumeStock(stock,name,amount){
+  const have=Number(stock[name])||0,use=Math.min(have,amount);
+  stock[name]=have-use; return amount-use;
+}
+function recurseNeed(stock,c,material,amount,raw){
+  amount=consumeStock(stock,material,amount); if(amount<=1e-9)return;
+  const step=c.steps.find(s=>s.to===material);
   if(!step){raw[material]=(raw[material]||0)+amount;return;}
-  needMaterial(stock,c,step.from,amount*step.input,raw);
+  recurseNeed(stock,c,step.from,amount*step.input,raw);
 }
-function calcContract(){
-  const original=getStock(),stock={...original},raw={},used=[];
-  document.querySelectorAll(".contractLine").forEach(row=>{
-    const name=row.querySelector(".cp").value,qty=Math.max(0,Number(row.querySelector(".cq").value)||0);if(!qty)return;
-    const left=take(stock,name,qty),direct=qty-left;if(direct>0)used.push(`${name}: ${direct}`);
-    if(left>0){const r=productRecipe(name);if(r)needMaterial(stock,r.c,r.f.from,left*r.f.input,raw);}
+function calcFeasibility(){
+  const original=getFullStock(),working={...original},raw={},unknown=[],direct=[];
+  document.querySelectorAll(".feasibilityLine").forEach(row=>{
+    const name=row.querySelector(".fp").value,qty=Math.max(0,Number(row.querySelector(".fq").value)||0);
+    if(!qty)return;
+    const remain=consumeStock(working,name,qty),used=qty-remain;
+    if(used>0)direct.push(`${name}: ${used}`);
+    if(remain<=1e-9)return;
+    const r=findFinalRecipe(name);
+    if(!r){unknown.push(`${name}: nog ${remain}`);return;}
+    recurseNeed(working,r.c,r.f.from,remain*r.f.input,raw);
   });
-  const entries=Object.entries(raw);
-  const possible=entries.every(([n,v])=>(Number(original[n])||0)>=v-1e-9);
-  const rows=entries.map(([n,v])=>{const have=Number(original[n])||0,d=have-v;return `<div class="item"><strong>${n}</strong><div class="small">Nodig: ${kg(v)} · eigen stock: ${kg(have)} · ${d>=0?`<span class="offer-good">${kg(d)} over</span>`:`<span class="offer-bad">${kg(-d)} tekort</span>`}</div></div>`;}).join("");
-  $("contractResults").innerHTML=`<h3>${possible?"✅ Contract haalbaar":"⚠️ Contract nog niet haalbaar"}</h3>${used.length?`<p class="small">Eindproducten rechtstreeks uit stock: ${used.join(", ")}</p>`:""}${rows||'<div class="item">Geen extra ruwe grondstof nodig.</div>'}<p class="note">Bestaande eindproducten en tussenproducten worden eerst gebruikt. De berekening rondt nooit naar boven af.</p>`;
+  const rawRows=Object.entries(raw).map(([n,needed])=>{
+    const have=Number(original[n])||0,diff=have-needed;
+    return `<div class="item"><strong>${n}</strong><div class="small">Benodigd: ${kg(needed)} · stock: ${kg(have)} · ${diff>=-1e-9?`<span class="offer-good">${kg(Math.max(0,diff))} over</span>`:`<span class="offer-bad">${kg(-diff)} tekort</span>`}</div></div>`;
+  }).join("");
+  const enough=Object.entries(raw).every(([n,v])=>(Number(original[n])||0)>=v-1e-9) && unknown.length===0;
+  $("feasibilityResults").innerHTML=`<h3>${enough?"✅ Contract haalbaar":"⚠️ Contract nog niet volledig haalbaar"}</h3>
+    ${direct.length?`<p class="small"><strong>Rechtstreeks uit afgewerkte stock:</strong> ${direct.join(", ")}</p>`:""}
+    ${rawRows||'<div class="item">Voor de bekende recepten is geen extra ruwe grondstof nodig.</div>'}
+    ${unknown.length?`<div class="item"><strong>⚠️ Recept ontbreekt</strong><div class="small">${unknown.join("<br>")}<br>Deze hybride recepten worden bewust niet gegokt.</div></div>`:""}
+    <p class="note">De planner gebruikt eerst afgewerkte producten, daarna tussenproducten en rekent vervolgens terug door de volledige bekende productieketen.</p>`;
 }
-function initContracts(){
-  renderStock();$("contractLines").innerHTML="";addContractLine();
-  $("addContractLine").onclick=addContractLine;$("calcContract").onclick=calcContract;
+function initStockPage(){
+  renderFullStock();
+  $("stockFilter").onchange=renderFullStock;
+  $("stockSearch").oninput=renderFullStock;
+  $("saveStockButton").onclick=()=>{
+    document.querySelectorAll(".fullStockField").forEach(i=>{
+      const s=getFullStock();s[i.dataset.name]=Math.max(0,Number(i.value)||0);saveFullStock(s);
+    });
+    $("stockSaved").textContent="✓ Stock opgeslagen en klaar voor de contractberekening.";
+  };
+}
+function initFeasibility(){
+  $("feasibilityLines").innerHTML="";addFeasibilityLine();
+  $("addFeasibilityLine").onclick=addFeasibilityLine;$("calcFeasibility").onclick=calcFeasibility;
 }
 
 function renderData(){
@@ -501,6 +571,8 @@ $("calcContract").addEventListener("click",calcContract);
 initProductionSelectors();
 initTrade();
 initContracts();
+initStockPage();
+initFeasibility();
 renderData();
 calcProduction();
 calcTrade();
