@@ -21,7 +21,7 @@
     header h1{font-size:20px;margin:0}
     header p{font-size:12px;color:var(--muted);margin:3px 0 0}
     main{padding:14px 14px calc(28px + env(safe-area-inset-bottom));max-width:900px;margin:auto}
-    .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+    .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
     .tab{border:1px solid var(--border);background:#fff;border-radius:12px;padding:11px 8px;font-weight:700;font-size:14px}
     .tab.active{background:var(--accent);color:white;border-color:var(--accent)}
     .panel{display:none}.panel.active{display:block}
@@ -52,7 +52,7 @@
     @media(max-width:520px){
       .grid2{grid-template-columns:1fr}
       .result-row{grid-template-columns:1.2fr .65fr .65fr .8fr;font-size:12px}
-      .tabs{grid-template-columns:1fr}
+      .tabs{grid-template-columns:1fr 1fr}
     }
   </style>
 </head>
@@ -66,6 +66,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="production">Productie</button>
     <button class="tab" data-tab="trade">Handel</button>
+    <button class="tab" data-tab="contracts">Contracten</button>
     <button class="tab" data-tab="data">Gegevens</button>
   </div>
 
@@ -124,6 +125,57 @@
     </div>
 
     <div class="card" id="tradeResults"></div>
+  </section>
+
+
+  <section id="contracts" class="panel">
+    <div class="card">
+      <h2>Contract met 2 materialen</h2>
+      <p class="sub">Vul de twee gevraagde producten en hoeveelheden in. De calculator telt hun marktwaarde samen en geeft een richtprijs voor het volledige contract.</p>
+
+      <h3>Materiaal 1</h3>
+      <label for="contractProduct1">Product</label>
+      <select id="contractProduct1"></select>
+      <label for="contractQty1">Aantal</label>
+      <input id="contractQty1" type="number" min="0" step="1" value="10">
+
+      <h3 style="margin-top:16px">Materiaal 2</h3>
+      <label for="contractProduct2">Product</label>
+      <select id="contractProduct2"></select>
+      <label for="contractQty2">Aantal</label>
+      <input id="contractQty2" type="number" min="0" step="1" value="10">
+
+      <label for="contractOffer">Contractbod totaal (optioneel)</label>
+      <input id="contractOffer" type="number" min="0" step="1" placeholder="bv. 2500">
+
+      <label for="contractMargin">Gewenste marge boven marktwaarde</label>
+      <select id="contractMargin">
+        <option value="0.10">Voorzichtig +10%</option>
+        <option value="0.20" selected>Goed doel +20%</option>
+        <option value="0.30">Agressief +30%</option>
+        <option value="0.40">Zeer agressief +40%</option>
+      </select>
+
+      <button class="primary" id="calcContract">Bereken contract</button>
+    </div>
+
+    <div class="card" id="contractResults"></div>
+  </section>
+
+  <section id="contracts" class="panel">
+    <div class="card">
+      <h2>Contractplanner</h2>
+      <p class="sub">Vul je volledige stock in. De calculator gebruikt eerst eindproducten, daarna tussenproducten en berekent vervolgens welke ruwe grondstoffen nog nodig zijn.</p>
+      <h3>Mijn stock</h3>
+      <div id="stockEditor"></div>
+    </div>
+    <div class="card">
+      <h3>Contract invoeren</h3>
+      <div id="contractLines"></div>
+      <button class="secondary" id="addContractLine" type="button">+ Product toevoegen</button>
+      <button class="primary" id="calcContract" type="button">Controleer contract</button>
+    </div>
+    <div class="card" id="contractResults"><p class="sub">Vul je stock en contract in.</p></div>
   </section>
 
   <section id="data" class="panel">
@@ -205,6 +257,15 @@ const defaultData = {
         {name:"Plastic Vaas",from:"Plastic Korrels",input:3.3}
       ]
     },
+    "Organisch": {
+      stages:["Compost"],
+      steps:[],
+      finals:[
+        {name:"Vloeibare Meststof - Klein",from:"Compost",input:1.5},
+        {name:"Vloeibare Meststof - Medium",from:"Compost",input:3.0},
+        {name:"Vloeibare Meststof - Groot",from:"Compost",input:6.0}
+      ]
+    },
     "Glas": {
       stages:["Glasdelen","Glasstof","Gesmolten Glas"],
       steps:[
@@ -220,7 +281,10 @@ const defaultData = {
   }
 };
 
-let appData = JSON.parse(localStorage.getItem("rcsData") || "null") || defaultData;
+let appData = JSON.parse(localStorage.getItem("rcsData") || "null") || JSON.parse(JSON.stringify(defaultData));
+appData.prices={...defaultData.prices,...(appData.prices||{})};
+appData.chains={...defaultData.chains,...(appData.chains||{})};
+if(!appData.chains.Organisch) appData.chains.Organisch=defaultData.chains.Organisch;
 const $ = id => document.getElementById(id);
 const money = n => "$" + Math.round(n).toLocaleString("nl-BE");
 const kg = n => Number(n).toLocaleString("nl-BE",{maximumFractionDigits:2}) + " kg";
@@ -323,6 +387,57 @@ function calcTrade(){
     <p class="note">De richtmarges zijn voorlopig. Zodra we echte onderhandelingen testen, kunnen we de acceptatiegrenzen per product verfijnen.</p>`;
 }
 
+
+function allStockItems(){
+  const s=new Set();
+  Object.values(appData.chains).forEach(c=>{c.stages.forEach(x=>s.add(x));c.finals.forEach(f=>s.add(f.name));});
+  return [...s].sort((a,b)=>a.localeCompare(b,"nl"));
+}
+function getStock(){return JSON.parse(localStorage.getItem("rcsStock")||"{}");}
+function saveStock(s){localStorage.setItem("rcsStock",JSON.stringify(s));}
+function renderStock(){
+  const s=getStock();
+  $("stockEditor").innerHTML=allStockItems().map(n=>`<div style="display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center;margin:7px 0"><span>${n}</span><input class="stockField" data-name="${n}" type="number" min="0" step="0.1" value="${s[n]||0}"></div>`).join("");
+  document.querySelectorAll(".stockField").forEach(i=>i.oninput=()=>{const d=getStock();d[i.dataset.name]=Math.max(0,Number(i.value)||0);saveStock(d);});
+}
+function contractProducts(){
+  const a=[];Object.entries(appData.chains).forEach(([cat,c])=>c.finals.forEach(f=>a.push({cat,name:f.name})));
+  return a.sort((a,b)=>a.name.localeCompare(b.name,"nl"));
+}
+function addContractLine(){
+  const d=document.createElement("div");d.className="contractLine";
+  d.style.cssText="display:grid;grid-template-columns:1fr 85px 42px;gap:7px;align-items:end;margin:8px 0";
+  d.innerHTML=`<div><label>Product</label><select class="cp">${contractProducts().map(x=>`<option value="${x.name}">${x.name} — ${x.cat}</option>`).join("")}</select></div><div><label>Aantal</label><input class="cq" type="number" min="0" step="1" value="1"></div><button class="secondary cr" type="button">×</button>`;
+  $("contractLines").appendChild(d);d.querySelector(".cr").onclick=()=>d.remove();
+}
+function productRecipe(name){
+  for(const [cat,c] of Object.entries(appData.chains)){const f=c.finals.find(x=>x.name===name);if(f)return{cat,c,f};}
+  return null;
+}
+function take(stock,name,amount){const have=Number(stock[name])||0,use=Math.min(have,amount);stock[name]=have-use;return amount-use;}
+function needMaterial(stock,c,material,amount,raw){
+  amount=take(stock,material,amount);if(amount<=1e-9)return;
+  const step=c.steps.find(x=>x.to===material);
+  if(!step){raw[material]=(raw[material]||0)+amount;return;}
+  needMaterial(stock,c,step.from,amount*step.input,raw);
+}
+function calcContract(){
+  const original=getStock(),stock={...original},raw={},used=[];
+  document.querySelectorAll(".contractLine").forEach(row=>{
+    const name=row.querySelector(".cp").value,qty=Math.max(0,Number(row.querySelector(".cq").value)||0);if(!qty)return;
+    const left=take(stock,name,qty),direct=qty-left;if(direct>0)used.push(`${name}: ${direct}`);
+    if(left>0){const r=productRecipe(name);if(r)needMaterial(stock,r.c,r.f.from,left*r.f.input,raw);}
+  });
+  const entries=Object.entries(raw);
+  const possible=entries.every(([n,v])=>(Number(original[n])||0)>=v-1e-9);
+  const rows=entries.map(([n,v])=>{const have=Number(original[n])||0,d=have-v;return `<div class="item"><strong>${n}</strong><div class="small">Nodig: ${kg(v)} · eigen stock: ${kg(have)} · ${d>=0?`<span class="offer-good">${kg(d)} over</span>`:`<span class="offer-bad">${kg(-d)} tekort</span>`}</div></div>`;}).join("");
+  $("contractResults").innerHTML=`<h3>${possible?"✅ Contract haalbaar":"⚠️ Contract nog niet haalbaar"}</h3>${used.length?`<p class="small">Eindproducten rechtstreeks uit stock: ${used.join(", ")}</p>`:""}${rows||'<div class="item">Geen extra ruwe grondstof nodig.</div>'}<p class="note">Bestaande eindproducten en tussenproducten worden eerst gebruikt. De berekening rondt nooit naar boven af.</p>`;
+}
+function initContracts(){
+  renderStock();$("contractLines").innerHTML="";addContractLine();
+  $("addContractLine").onclick=addContractLine;$("calcContract").onclick=calcContract;
+}
+
 function renderData(){
   $("dataList").innerHTML=Object.entries(appData.chains).map(([cat,c])=>{
     const finals=c.finals.map(f=>`${f.name}: ${f.input} kg ${f.from} → ${money(appData.prices[f.name])}`).join("<br>");
@@ -339,11 +454,57 @@ $("savePrice").addEventListener("click",()=>{
 $("calcProduction").addEventListener("click",calcProduction);
 $("calcTrade").addEventListener("click",calcTrade);
 
+
+function initContracts(){
+  const names=Object.keys(appData.prices).sort((a,b)=>a.localeCompare(b,"nl"));
+  $("contractProduct1").innerHTML=names.map(n=>`<option>${n}</option>`).join("");
+  $("contractProduct2").innerHTML=names.map(n=>`<option>${n}</option>`).join("");
+  if(names.includes("Metaaldelen")) $("contractProduct1").value="Metaaldelen";
+  if(names.includes("Plastic Delen")) $("contractProduct2").value="Plastic Delen";
+}
+
+function calcContract(){
+  const p1=$("contractProduct1").value;
+  const p2=$("contractProduct2").value;
+  const q1=Math.max(0,parseInt($("contractQty1").value)||0);
+  const q2=Math.max(0,parseInt($("contractQty2").value)||0);
+  const v1=(appData.prices[p1]||0)*q1;
+  const v2=(appData.prices[p2]||0)*q2;
+  const base=v1+v2;
+  const margin=parseFloat($("contractMargin").value)||0;
+  const target=Math.round(base*(1+margin));
+  const offer=parseFloat($("contractOffer").value);
+
+  let verdict="";
+  if(Number.isFinite(offer) && base>0){
+    const pct=((offer/base)-1)*100;
+    let cls="offer-warn",txt="rond de marktwaarde";
+    if(pct>=20){cls="offer-good";txt="sterk contract"}
+    else if(pct>=8){cls="offer-good";txt="goed contract"}
+    else if(pct<0){cls="offer-bad";txt="onder de marktwaarde"}
+    verdict=`<p>Contractbod: <strong>${money(offer)}</strong> (${pct>=0?"+":""}${pct.toFixed(1)}% t.o.v. de gecombineerde marktwaarde). <span class="${cls}">${txt}</span>.</p>`;
+  }
+
+  $("contractResults").innerHTML=`
+    <h3>${p1} + ${p2}</h3>
+    <div class="stats">
+      <div class="stat"><span>${p1}</span><strong>${q1} × ${money(appData.prices[p1]||0)}</strong><span>${money(v1)}</span></div>
+      <div class="stat"><span>${p2}</span><strong>${q2} × ${money(appData.prices[p2]||0)}</strong><span>${money(v2)}</span></div>
+      <div class="stat"><span>Gecombineerde marktwaarde</span><strong>${money(base)}</strong></div>
+      <div class="stat"><span>Richtprijs contract</span><strong>${money(target)}</strong></div>
+    </div>
+    ${verdict}
+    <p class="note">Deze functie behandelt het contract als één deal met twee verschillende producten. Zodra je mij voorbeelden van echte contractonderhandelingen stuurt, kan ik de optimale acceptatiegrens nauwkeuriger maken.</p>`;
+}
+$("calcContract").addEventListener("click",calcContract);
+
 initProductionSelectors();
 initTrade();
+initContracts();
 renderData();
 calcProduction();
 calcTrade();
+calcContract();
 
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
 </script>
